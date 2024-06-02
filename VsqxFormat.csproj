@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+	  <OutputPath>$(AppData)\Roaming\TuneLab\Extensions\VSQXFormat</OutputPath>
+	  <StartAction>Program</StartAction>
+	  <StartProgram>E:\UserDirectory\Downloads\TuneLab\TuneLab.exe</StartProgram>
+	  <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+	  <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+	  
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\TuneLab.Base\TuneLab.Base.csproj" />
+    <ProjectReference Include="..\..\..\TuneLab.Extensions.Formats\TuneLab.Extensions.Formats.csproj" />
+  </ItemGroup>
+
+</Project>
