@@ -14,6 +14,7 @@ using System.Xml.Serialization;
 using TuneLab.Base.Properties;
 using TuneLab.Base.Structures;
 using TuneLab.Extensions.Formats.DataInfo;
+using TuneLab.Extensions.Formats.VSQX.partSegment;
 using TuneLab.Extensions.Formats.VSQX.vsq4;
 using Point = TuneLab.Base.Structures.Point;
 
@@ -51,14 +52,6 @@ namespace TuneLab.Extensions.Formats.VSQX
     
     public class VsqxDecoder
     {
-        private enum DecodeModeType
-        {
-            VOCALOID_BasePitch=0,
-            Besizer_BasePitch=1
-        }
-
-        DecodeModeType mMode = DecodeModeType.Besizer_BasePitch;
-
         int mVsqVersion = 0;
         public VsqxDecoder() {}
         private int loadVsqVersion(Stream stream)
@@ -94,10 +87,17 @@ namespace TuneLab.Extensions.Formats.VSQX
         private delegate double SyncAutomationPoint(double input);
         public ProjectInfo Deserialize(Stream stream)
         {
-            mVsqVersion = loadVsqVersion(stream);
-            if (mVsqVersion == 0) return null;
-            vsq4.vsq4 vsqxDoc = loadVsq4Stream(stream);
-
+            vsq4.vsq4 vsqxDoc;
+            if (Vsq4Adapter2.checkIsV2Project(stream))
+            {
+                vsqxDoc = Vsq4Adapter2.loadFromStream(stream);
+            }
+            else
+            {
+                mVsqVersion = loadVsqVersion(stream);
+                if (mVsqVersion == 0) return null;
+                vsqxDoc = loadVsq4Stream(stream);
+            }
             ProjectInfo proj = new ProjectInfo();
             //处理Tempo
             foreach (vsq4.tempo t in vsqxDoc.masterTrack.tempo) proj.Tempos.Add(new TempoInfo() { Bpm = t.v / 100d, Pos = t.t / 100d });
@@ -211,14 +211,9 @@ namespace TuneLab.Extensions.Formats.VSQX
                                 midiPartInfo.Notes.Add(noteInfo);
                             }
 
-                            bool NoPitch = (!VsqxControllers.ContainsKey("P") || VsqxControllers["P"].Where(key => key.Value != 0).Count() == 0) && p.plane == 1;
-                            //生成音高(仅在贝塞尔模式运行）
-                            if (NoPitch)
+                            if (p.plane==1)
                             {
-                                ;//当音高捕捉模式没有有效音高控制点时，不准备基础音高了。
-                            }
-                            else if (mMode == DecodeModeType.Besizer_BasePitch)//只有不是黄条模式，且贝塞尔基础曲线时消耗时间才有意义，因此判断是否执行
-                            {
+                                int sigment_Space = 120;
                                 double nextDert = 0;
                                 //计算基础音高，自动补完滑音
                                 {
@@ -227,27 +222,18 @@ namespace TuneLab.Extensions.Formats.VSQX
                                     {
                                         note n1 = p.note[ni + 1];
                                         nextDert = n1.t - n.t - n.dur;
-                                        if (nextDert <= 480)//不分片,前后两端都有音高
+                                        if (nextDert <= sigment_Space)//不分片,前后两端都有音高
                                         {
-                                            if (p.plane != 1)
-                                            {//音高拟合模式，使用贝塞尔曲线
-                                                TempoInfo bpm = proj.Tempos.Where(t => t.Pos <= n.t).OrderBy(t => t.Pos).LastOrDefault();
-                                                BasePitchHelper besizerHelper = new BasePitchHelper(bpm.Bpm);
-                                                basePitch = besizerHelper.GetSmoothPitch(n.t, n.dur, n.n, n1.t, n1.dur, n1.n, basePitch); //贝塞尔曲线，从当前音符末尾到下一音符开头
+                                            if (n.t + n.dur == n1.t)
+                                            {
+                                                basePitch.Add(n.t + n.dur - 1, n.n);
                                             }
                                             else
-                                            {//音高捕捉(黄条）模式，对齐音符折线
-                                                if (n.t + n.dur == n1.t)
-                                                {
-                                                    basePitch.Add(n.t + n.dur - 1, n.n);
-                                                }
-                                                else
-                                                {
-                                                    basePitch.Add(n.t + n.dur, n.n);//加尾部0
-                                                    if (n.t + n.dur + 1 < n1.t) basePitch.Add(n.t + n.dur + 1, n1.n);//加区域0
-                                                }
-                                                basePitch.Add(n1.t, n1.n);//加头部0
+                                            {
+                                                basePitch.Add(n.t + n.dur, n.n);//加尾部0
+                                                if (n.t + n.dur + 1 < n1.t) basePitch.Add(n.t + n.dur + 1, n1.n);//加区域0
                                             }
+                                            basePitch.Add(n1.t, n1.n);//加头部0
                                         }
                                         else//分片，两端不连续，中间区域归属后一个音符
                                         {
@@ -279,7 +265,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                                     List<Point> lpItems = new List<Point>();
                                     Parallel.ForEach(AllKeys, (tickKey) =>
                                     {
-                                        double bPitch = basePitch.ContainsKey(tickKey) ? basePitch[tickKey] : BasePitchHelper.calc_Mid(basePitch.Where(key => key.Key < tickKey).Last(), basePitch.Where(key => key.Key > tickKey).First(), tickKey);
+                                        double bPitch = basePitch.ContainsKey(tickKey) ? basePitch[tickKey] : SnapModeCurve.calc_Mid(basePitch.Last(key => key.Key < tickKey), basePitch.Where(key => key.Key > tickKey).First(), tickKey);
                                         double bPit = ctl.Where(key => key.Key <= tickKey).Last().Value;
                                         double bPbs = pbs.Where(key => key.Key <= tickKey).Last().Value;
                                         Point vP = new Point(tickKey, bPitch + bPbs * bPit / (bPit > 0 ? 8191.0d : 8192.0d));
@@ -294,35 +280,14 @@ namespace TuneLab.Extensions.Formats.VSQX
                                             midiPartInfo.Pitch.Add(lpItems.OrderBy(p => p.X).ToList());
                                         else
                                             midiPartInfo.Pitch[midiPartInfo.Pitch.Count - 1].AddRange(lpItems.OrderBy(p => p.X).ToList());
-                                        if (nextDert > 480) midiPartInfo.Pitch.Add(new List<Point>());
+                                        if (nextDert > sigment_Space) midiPartInfo.Pitch.Add(new List<Point>());
                                     }
-                                }
-                            }
-                            //添加非贝塞尔音高捕捉模式
-                            else if (p.plane == 1)
-                            {
-                                int sp = n.t;
-                                int ep = n.t + n.dur;
-                                SortedDictionary<int, int> ctl = VsqxControllers.ContainsKey("P") ? VsqxControllers["P"] : new SortedDictionary<int, int>() { { 0, 0 } };
-                                SortedDictionary<int, int> pbs = VsqxControllers.ContainsKey("S") ? VsqxControllers["S"] : new SortedDictionary<int, int>() { { 0, 2 } };
-                                int KeyStart = ctl.Keys.LastOrDefault(key => key <= sp);
-                                var KeyArea = ctl.Keys.Where(key => key > sp && key <= ep);
-                                int PBS = pbs[pbs.Keys.LastOrDefault(key => key <= KeyStart)];
-                                List<Point> lpItems = new List<Point>() { new Point(sp, n.n + PBS * ctl[KeyStart] / (ctl[KeyStart] > 0 ? 8191.0d : 8192.0d)) };
-                                foreach (int aKey in KeyArea)
-                                {
-                                    PBS = pbs[pbs.Keys.LastOrDefault(key => key <= aKey)];
-                                    lpItems.Add(new Point(aKey, n.n + PBS * ctl[aKey] / (ctl[aKey] > 0 ? 8191.0d : 8192.0d)));
-                                }
-                                lock (midiPartInfo)
-                                {
-                                    midiPartInfo.Pitch.Add(lpItems.OrderBy(p => p.X).ToList());
                                 }
                             }
                         }
                     });
                     //添加PIT参数,如果是Besizer，那么自己加初始滑音
-                    Task copyPIT= (p.plane==1 || mMode==DecodeModeType.Besizer_BasePitch) ? Task.Factory.StartNew(() => {; }):Task.Factory.StartNew(() => { SyncAutomation("P", "PitchBend", 0, new SyncAutomationPoint((inp) => { return inp > 0 ? inp / 8191.0d : inp / 8192.0d; })); });
+                    Task copyPIT= (p.plane==1) ? Task.Factory.StartNew(() => {; }):Task.Factory.StartNew(() => { SyncAutomation("P", "PitchBend", 0, new SyncAutomationPoint((inp) => { return inp > 0 ? inp / 8191.0d : inp / 8192.0d; })); });
                     //添加PBS参数
                     Task copyPBS = Task.Factory.StartNew(() => { SyncAutomation("S", "PitchBendSensitive", 2, new SyncAutomationPoint((inp) => { return inp; })); });
                     //添加DYN参数
@@ -435,23 +400,27 @@ namespace TuneLab.Extensions.Formats.VSQX
                     ret.tNo = (byte)ti;
                     ret.name = t.Name;
                     ret.comment = t.Name;
-                    ret.vsPart = new vsPart[t.Parts.Count];
+                    List < vsPart> partList = new List<vsPart>();
                     for(int pi=0;pi<t.Parts.Count;pi++)
                     {
                         if (t.Parts[pi].GetType() != typeof(MidiPartInfo)) continue;
-                        MidiPartInfo p = (MidiPartInfo)t.Parts[pi];
-                        vsPart vp = new vsPart();
-                        vp.t = (int)p.Pos;
-                        vp.playTime = (int)p.Dur;
-                        vp.name = p.Name;
-                        vp.comment = p.Name;
-                        vp.sPlug = new sPlug()
+                        List<MidiSegmentPartInfo> seged_p = MidiPartSegment.Segment((MidiPartInfo)t.Parts[pi], info.Tempos);
+                        for (int pi_s = 0; pi_s < seged_p.Count; pi_s++)
                         {
-                            id = "ACA9C502-A04B-42b5-B2EB-5CEA36D16FCE",
-                            name = "VOCALOID2 Compatible Style",
-                            version = "3.0.0.1"
-                        };
-                        vp.pStyle = new typeParamAttr[7] {
+                            MidiSegmentPartInfo segInfo = seged_p[pi_s];
+                            MidiPartInfo p = segInfo.MidiPart;
+                            vsPart vp = new vsPart();
+                            vp.t = (int)p.Pos;
+                            vp.playTime = (int)p.Dur;
+                            vp.name = p.Name;
+                            vp.comment = p.Name;
+                            vp.sPlug = new sPlug()
+                            {
+                                id = "ACA9C502-A04B-42b5-B2EB-5CEA36D16FCE",
+                                name = "VOCALOID2 Compatible Style",
+                                version = "3.0.0.1"
+                            };
+                            vp.pStyle = new typeParamAttr[7] {
                             new typeParamAttr(){id="accent",Value=50},
                             new typeParamAttr(){id="bendDep",Value=8},
                             new typeParamAttr(){id="bendLen",Value=0},
@@ -460,24 +429,24 @@ namespace TuneLab.Extensions.Formats.VSQX
                             new typeParamAttr(){id="opening",Value=127},
                             new typeParamAttr(){id="risePort",Value=0},
                         };
-                        vp.singer = new singer[1] { new singer(){ t = 0, bs = 4, pc = 0 } };//和头部vVoiceTable对应
-                        List<Task> pallTasks = new List<Task>();
-                        //复制Note
-                        pallTasks.Add(Task.Factory.StartNew(() =>
-                        {
-                            List<vsq4.note> noteList = new List<vsq4.note>();
-                            for (int i = 0; i < p.Notes.Count; i++)
+                            vp.singer = new singer[1] { new singer() { t = 0, bs = 4, pc = 0 } };//和头部vVoiceTable对应
+                            List<Task> pallTasks = new List<Task>();
+                            //复制Note
+                            pallTasks.Add(Task.Factory.StartNew(() =>
                             {
-                                note vsnote = new note();
-                                vsnote.t = (int)p.Notes[i].Pos;
-                                vsnote.dur = (int)p.Notes[i].Dur;
-                                vsnote.n = (byte)p.Notes[i].Pitch;
-                                vsnote.v = 64;
-                                vsnote.y = p.Notes[i].Lyric;
-                                vsnote.p = new typePhonemes() { Value = p.Notes[i].Properties.GetValue<string>("Phoneme", "a") };
-                                vsnote.nStyle = new nStyle();
-                                vsnote.nStyle.v = new typeParamAttr[9]
+                                List<vsq4.note> noteList = new List<vsq4.note>();
+                                for (int i = 0; i < p.Notes.Count; i++)
                                 {
+                                    note vsnote = new note();
+                                    vsnote.t = (int)p.Notes[i].Pos;
+                                    vsnote.dur = (int)p.Notes[i].Dur;
+                                    vsnote.n = (byte)p.Notes[i].Pitch;
+                                    vsnote.v = 64;
+                                    vsnote.y = p.Notes[i].Lyric;
+                                    vsnote.p = new typePhonemes() { Value = p.Notes[i].Properties.GetValue<string>("Phoneme", "a") };
+                                    vsnote.nStyle = new nStyle();
+                                    vsnote.nStyle.v = new typeParamAttr[9]
+                                    {
                                     new typeParamAttr(){id="accent",Value=50},
                                     new typeParamAttr(){id="bendDep",Value=8},
                                     new typeParamAttr(){id="bendLen",Value=0},
@@ -487,110 +456,80 @@ namespace TuneLab.Extensions.Formats.VSQX
                                     new typeParamAttr(){id="risePort",Value=0},
                                     new typeParamAttr(){id="vibLen",Value=0},
                                     new typeParamAttr(){id="vibType",Value=0},
-                                };
-                                noteList.Add(vsnote);
-                            }
-                            lock (vp) { vp.note = noteList.ToArray(); }
-                        }));
-                        //复制常规参数
-                        List<vsq4.cc> ccList = new List<cc>();
-                        void SyncAutomation2(string srcKey, string targetKey, double defaultValue, SyncAutomationPoint callback)
-                        {
-                            if (!p.Automations.ContainsKey(targetKey)) return;
-                            List<vsq4.cc> tmpList = new List<cc>();
-                            foreach (Point pp in p.Automations[targetKey].Points)
-                            {
-                                tmpList.Add(new cc() { t = (int)pp.X, v = new typeParamAttr() { id = srcKey, Value = (int)callback(pp.Y) } });
-                            }
-                            lock (ccList) { ccList.AddRange(tmpList); };
-                        }
-                        pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("D", "Dynamics", 64, new SyncAutomationPoint((inp) => { return Math.Min(127,RangeMapper(inp,-1.0,1.0,0,128)); })) ; }));
-                        pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("R", "Brightness", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp, -1.0, 1.0, 0, 128)); })); }));
-                        pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("G", "Gender", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp, -1.0, 1.0, 0, 128)); })); }));
-                        pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("W", "Growl", 0, new SyncAutomationPoint((inp) => { return RangeMapper(inp, 0, 1.0, 0, 127); })); }));
-                        pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("C", "Clearness", 0, new SyncAutomationPoint((inp) => { return RangeMapper(inp, 0, 1.0, 0, 127); })); }));
-                        pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("B", "Breathiness", 0, new SyncAutomationPoint((inp) => { return RangeMapper(inp, 0, 1.0, 0, 127); })); }));
-
-                        //处理PBS
-                        pallTasks.Add(Task.Factory.StartNew(() => {
-                            //计算基础音高
-                            SortedDictionary<int, double> basePitch = new SortedDictionary<int, double>();
-                            {
-                                for (int i = 0; i < p.Notes.Count; i++)
-                                {
-                                    basePitch.Add((int)p.Notes[i].EndPos(), p.Notes[i].Pitch);//因为Pit与音符向后关联，所以取音符最后一个点即可。
-                                   /* if (basePitch.ContainsKey((int)p.Notes[i].StartPos()))
-                                        basePitch[(int)p.Notes[i].StartPos()] = p.Notes[i].Pitch;
-                                    else
-                                        basePitch.Add((int)p.Notes[i].StartPos(), p.Notes[i].Pitch);//但是为了避免动态音高导致串音，前点也加上*/
+                                    };
+                                    noteList.Add(vsnote);
                                 }
-                            }
-                            //计算绝对音高
-                            SortedDictionary<int, double> absPitch = new SortedDictionary<int, double>(basePitch);
-                            //从PIT获取绝对音高
-                            if(p.Automations.ContainsKey("P") && p.Automations["P"].Points.Count>0){
-                                SortedDictionary<int, int> pbs = new SortedDictionary<int, int>();
-                                if (p.Automations.ContainsKey("S") && p.Automations["S"].Points.Count > 0) for (int pt = 0; pt < p.Automations["S"].Points.Count; pt++) pbs.Add((int)p.Automations["S"].Points[pt].X, (int)p.Automations["S"].Points[pt].Y);
-                                else pbs.Add(0, 2);
-                                Parallel.ForEach<Point>(p.Automations["P"].Points, (pT) => {
-                                    var pitT = pT.X;
-                                    var pitV = pT.Y;
-                                    int PBS = pbs[pbs.Keys.LastOrDefault(key => key <= pitT)];
-                                    var absPitV = (double)PBS * (pitV / (pitV > 0 ? 8191.0d : 8192.0d));
-                                    var absPitB = (double)basePitch[basePitch.Keys.FirstOrDefault(key => key >= pitT)];
-                                    var absPit = absPitB + absPitV;
-                                    lock (absPitch) { if (absPitch.ContainsKey((int)pitT)) absPitch[(int)pitT] = absPit; else absPitch.Add((int)pitT, absPit); }
-                                });
-                            }
-                            //从PithLine更新绝对音高
-                            for(int pli =0;pli<p.Pitch.Count;pli++)
+                                lock (vp) { vp.note = noteList.ToArray(); }
+                            }));
+                            //复制常规参数
+                            List<vsq4.cc> ccList = new List<cc>();
+                            void SyncAutomation2(string srcKey, string targetKey, double defaultValue, SyncAutomationPoint callback)
                             {
-                                List<Point> pLine = p.Pitch[pli];
-                                Parallel.ForEach<Point>(p.Pitch[pli], (pp) =>
+                                if (!p.Automations.ContainsKey(targetKey)) return;
+                                List<vsq4.cc> tmpList = new List<cc>();
+                                foreach (Point pp in p.Automations[targetKey].Points)
                                 {
-                                    lock (absPitch)
+                                    tmpList.Add(new cc() { t = (int)pp.X, v = new typeParamAttr() { id = srcKey, Value = (int)callback(pp.Y) } });
+                                }
+                                lock (ccList) { ccList.AddRange(tmpList); };
+                            }
+                            pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("D", "Dynamics", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp, -1.0, 1.0, 0, 128)); })); }));
+                            pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("R", "Brightness", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp, -1.0, 1.0, 0, 128)); })); }));
+                            pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("G", "Gender", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp, -1.0, 1.0, 0, 128)); })); }));
+                            pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("W", "Growl", 0, new SyncAutomationPoint((inp) => { return RangeMapper(inp, 0, 1.0, 0, 127); })); }));
+                            pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("C", "Clearness", 0, new SyncAutomationPoint((inp) => { return RangeMapper(inp, 0, 1.0, 0, 127); })); }));
+                            pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("B", "Breathiness", 0, new SyncAutomationPoint((inp) => { return RangeMapper(inp, 0, 1.0, 0, 127); })); }));
+
+                            //音高参数导出
+                            if (segInfo.isPitchSnapMode)
+                            {
+                                vp.plane = 1;//PITCHMODE(绝对音高)
+                                vp.planeSpecified = true;
+                                //绝对音高模式
+                                SnapModeCurve curve = new SnapModeCurve(info.Tempos);
+                                pallTasks.Add(Task.Factory.StartNew(() =>
+                                {
+                                    //计算基础滑音
+                                    List<List<Point>> basePitchCurve = curve.GenerateSmooth(p.Notes);
+                                    //平滑对齐后绘制的Pit
+                                    List<List<Point>> absPitchCurve = curve.KeepSmooth(p.Pitch);
+                                    //计算相对音高
+                                    List<List<Point>> relCurve1 = curve.TransformRel(basePitchCurve, p.Notes);
+                                    List<List<Point>> relCurve2 = curve.TransformRel(absPitchCurve, p.Notes);
+                                    //计算PIT参数窗口曲线
+                                    List<Point> relAutomationPit = curve.GenerateAutomationPit(p.Automations);
+                                    //按照优先级依次覆盖叠加获取最终音高线
+                                    SortedDictionary<int, double> RelPitchBends = curve.CombineLines(new List<List<Point>>[2] { relCurve1, relCurve2 },new List<Point>[1] { relAutomationPit});
+                                    //将绝对音高写入VSQ
                                     {
-                                        if (absPitch.ContainsKey((int)pp.X))
-                                            absPitch[(int)pp.X] = pp.Y;
-                                        else
-                                            absPitch.Add((int)pp.X, pp.Y);
+                                        double maxPitch = Math.Max(Math.Abs(RelPitchBends.Values.Max()), Math.Abs(RelPitchBends.Values.Min()));
+                                        int PBS = Math.Min(24, (int)(maxPitch + 1));
+                                        ccList.Add(new cc() { t = 0, v = new typeParamAttr() { id = "S", Value = PBS } });
+                                        {
+                                            List<cc> ccRange = new List<cc>();
+                                            Parallel.ForEach(RelPitchBends, kv =>
+                                            {
+                                                lock (ccRange) ccRange.Add(new cc() { t = kv.Key, v = new typeParamAttr() { id = "P", Value = (int)(kv.Value * (kv.Value > 0 ? 8191.0d : 8192.0d) / (double)PBS) } });
+                                            });
+                                            ccList.AddRange(ccRange.OrderBy(p => p.t));
+                                        }
                                     }
-                                });
+                                }));
                             }
-                            //从绝对音高取回PIT
-                            SortedDictionary<int,double> relPit= new SortedDictionary<int,double>();//单独存是为了让PBS小一点，减少毛刺。
-                            Parallel.ForEach(absPitch, (kv => {
-                                var pitT = kv.Key;
-                                var absPitV = kv.Value;
-                                var absPitB = (double)basePitch[basePitch.Keys.FirstOrDefault(key => key >= pitT)];
-                                double pitV = (absPitV - absPitB);
-                                lock (relPit) { relPit.Add(pitT, pitV); }
-                            }));
-                            //输出PIT
-                            int outputPBS=Math.Min(24,Math.Max(2,(int)relPit.Values.Max()+1));
-                            List<vsq4.cc> tmpList = new List<cc>();
-                            Parallel.ForEach(relPit, (kv => {
-                                var pitT=kv.Key;
-                                double pitV = kv.Value/(double)outputPBS;
-                                double pitS = pitV>0?pitV*8191.0d:pitV * 8192.0d;
-                                pitS = Math.Max(-8192.0, Math.Min(8191.0,pitS));
-                                lock (tmpList)
-                                {
-                                    tmpList.Add(new cc() { t=pitT,v=new typeParamAttr() { id="P",Value=(int)pitS} });
-                                }
-                            }));
-                            lock (ccList) {
-                                ccList.Add(new cc() { t = 0, v = new typeParamAttr() { id = "S", Value = outputPBS } });
-                                ccList.AddRange(tmpList); 
-                            };
-                        }));
-
-                        Task.WaitAll(pallTasks.ToArray());
-                        vp.cc = ccList.ToArray();
-                        vp.plane = 1;//PITCHMODE
-                        vp.planeSpecified = true;
-                        ret.vsPart[pi]= vp;
+                            else
+                            {
+                                vp.plane = 0;//相对音高
+                                vp.planeSpecified = false;
+                                //全相对音高模式
+                                pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("P", "PitchBend", 0, new SyncAutomationPoint((inp) => { return inp > 0 ? inp * 8191.0d : inp * 8192.0; })); }));
+                                pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("S", "PitchBendSensitive", 2, new SyncAutomationPoint((inp) => { return inp; })); }));
+                            }
+                            Task.WaitAll(pallTasks.ToArray());
+                            vp.cc = ccList.ToArray();
+                            partList.Add(vp);
+                        }
                     }
+                    ret.vsPart = partList.ToArray();
                     lock (vsq.vsTrack) { vsq.vsTrack[ti] = ret; }
                 });
             }
@@ -611,5 +550,6 @@ namespace TuneLab.Extensions.Formats.VSQX
             serializer.Serialize(stream, vsq);
             if (stream.CanSeek) stream.Position = 0;
         }
+
     }
 }

@@ -8,11 +8,11 @@ using System.Xml;
 using System.Xml.Serialization;
 using TuneLab.Extensions.Formats.VSQX.vsq4;
 
-namespace TuneLab.Extensions.Formats.VSQX.VsqxFormat
+namespace VsqxFormat.xml
 {
-    public class typeCDataPhonemes:IXmlSerializable
+    public class typeCDataPhonemes : IXmlSerializable
     {
-        private typePhonemes _value; 
+        private typePhonemes _value;
         public static implicit operator typeCDataPhonemes(typePhonemes value)
         {
             return new typeCDataPhonemes(value);
@@ -47,14 +47,14 @@ namespace TuneLab.Extensions.Formats.VSQX.VsqxFormat
 
         public string Value
         {
-            get{ return _value.Value; }
-            set { _value.Value = value;}
+            get { return _value.Value; }
+            set { _value.Value = value; }
         }
 
         public byte @lock
         {
             get { return _value.@lock; }
-            set { _value.@lock = value;}
+            set { _value.@lock = value; }
         }
 
         public bool lockSpecified
@@ -64,16 +64,16 @@ namespace TuneLab.Extensions.Formats.VSQX.VsqxFormat
         }
 
 
-        public void ReadXml(System.Xml.XmlReader reader)
+        public void ReadXml(XmlReader reader)
         {
-            string phAttribute = reader.HasAttributes?reader.GetAttribute("lock"):"0";
-            _value = new typePhonemes() { @lock=(byte)int.Parse(phAttribute),lockSpecified= int.Parse(phAttribute)==1, Value=reader.ReadElementString() };
+            string phAttribute = reader.HasAttributes ? reader.GetAttribute("lock") : "0";
+            _value = new typePhonemes() { @lock = (byte)int.Parse(phAttribute), lockSpecified = int.Parse(phAttribute) == 1, Value = reader.ReadElementString() };
         }
 
-        public void WriteXml(System.Xml.XmlWriter writer)
+        public void WriteXml(XmlWriter writer)
         {
             writer.WriteCData(_value.Value);
-//            writer.WriteAttributeString("lock", "1");
+            //            writer.WriteAttributeString("lock", "1");
         }
     }
     public class CData : IXmlSerializable
@@ -122,12 +122,12 @@ namespace TuneLab.Extensions.Formats.VSQX.VsqxFormat
             return null;
         }
 
-        public void ReadXml(System.Xml.XmlReader reader)
+        public void ReadXml(XmlReader reader)
         {
             _value = reader.ReadElementString();
         }
 
-        public virtual void WriteXml(System.Xml.XmlWriter writer)
+        public virtual void WriteXml(XmlWriter writer)
         {
             writer.WriteCData(_value);
         }

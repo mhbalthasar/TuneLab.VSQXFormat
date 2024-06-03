@@ -9,7 +9,7 @@
 //------------------------------------------------------------------------------
 
 using System.Xml.Serialization;
-using TuneLab.Extensions.Formats.VSQX.VsqxFormat;
+using VsqxFormat.xml;
 
 // 
 // 此源代码由 xsd 自动生成, Version=4.8.3928.0。
