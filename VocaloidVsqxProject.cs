@@ -99,18 +99,21 @@ namespace TuneLab.Extensions.Formats.VSQX
                 vsqxDoc = loadVsq4Stream(stream);
             }
             ProjectInfo proj = new ProjectInfo();
-            //处理Tempo
-            foreach (vsq4.tempo t in vsqxDoc.masterTrack.tempo) proj.Tempos.Add(new TempoInfo() { Bpm = t.v / 100d, Pos = t.t / 100d });
-            //处理TimeSig
-            foreach (vsq4.timeSig t in vsqxDoc.masterTrack.timeSig) proj.TimeSignatures.Add(new TimeSignatureInfo() { BarIndex = t.m, Numerator = t.nu, Denominator = t.de });
+            if (vsqxDoc.masterTrack != null)
+            {
+                //处理Tempo
+                if(vsqxDoc.masterTrack.tempo!=null) foreach (vsq4.tempo t in vsqxDoc.masterTrack.tempo) proj.Tempos.Add(new TempoInfo() { Bpm = t.v / 100d, Pos = t.t / 100d });
+                //处理TimeSig
+                if (vsqxDoc.masterTrack.timeSig != null) foreach (vsq4.timeSig t in vsqxDoc.masterTrack.timeSig) proj.TimeSignatures.Add(new TimeSignatureInfo() { BarIndex = t.m, Numerator = t.nu, Denominator = t.de });
+            }
             //获取音量配置
             Dictionary<int, vsq4.vsUnit> vsMixer = new Dictionary<int, vsUnit>();
-            foreach (vsq4.vsUnit v in vsqxDoc.mixer.vsUnit) { vsMixer.Add(v.tNo, v); }
+            if(vsqxDoc.mixer!=null && vsqxDoc.mixer.vsUnit!=null) foreach (vsq4.vsUnit v in vsqxDoc.mixer.vsUnit) { vsMixer.Add(v.tNo, v); }
             //获取歌手配置
             Dictionary<string, vsq4.vVoice> vsVoice = new Dictionary<string, vVoice>();
-            foreach (vsq4.vVoice v in vsqxDoc.vVoiceTable) { vsVoice.Add(String.Format("{0}_{1}", v.bs, v.pc), v); }
+            if(vsqxDoc.vVoiceTable!=null) foreach (vsq4.vVoice v in vsqxDoc.vVoiceTable) { vsVoice.Add(String.Format("{0}_{1}", v.bs, v.pc), v); }
             //处理Tracks
-            foreach (vsq4.vsTrack t in vsqxDoc.vsTrack)
+            if(vsqxDoc.vsTrack!=null) foreach (vsq4.vsTrack t in vsqxDoc.vsTrack)
             {
                 var trackInfo = new TrackInfo()
                 {
@@ -195,9 +198,11 @@ namespace TuneLab.Extensions.Formats.VSQX
                     {
                         SortedDictionary<int, double> basePitch = new SortedDictionary<int, double>();
                         //复制音符
+                        if (p.note == null) p.note = new note[0];
                         for (int ni = 0; ni < p.note.Length; ni++)
                         {
                             note n = p.note[ni];
+                            if (n.p == null) continue;
                             NoteInfo noteInfo = new NoteInfo()
                             {
                                 Pos = n.t,
