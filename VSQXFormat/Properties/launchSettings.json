@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "VsqxFormat": {
+      "commandName": "Project"
+    },
+    "配置文件 1": {
+      "commandName": "Executable",
+      "executablePath": "E:\\UserDirectory\\Downloads\\TuneLab\\TuneLab.exe"
+    }
+  }
+}

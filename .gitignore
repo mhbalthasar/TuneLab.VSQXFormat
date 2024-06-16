@@ -2,3 +2,8 @@ bin/*
 obj/*
 .vs/*
 Properties/launchSettings.json
+/Output
+/TLXPackageHelper/bin
+/TLXPackageHelper/obj
+/VSQXFormat/.vs
+/VSQXFormat/obj
