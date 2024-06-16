@@ -7,7 +7,7 @@ internal class Program
     private static void Main(string[] args)
     {
         Console.WriteLine("TLX插件打包助手");
-        Package("VSQXFormat", @"..\VSQXFormat\", @"..\Output\VsqxFormatSupport-0.0.41.tlx");
+        Package("VSQXFormat", @"..\VSQXFormat\", @"..\Output\VsqxFormatSupport-0.0.4b2.tlx");
     }
 
     private static void Package(string PluginName, string ProjectDir = "", string OutputFile = "OutputTlx.tlx")

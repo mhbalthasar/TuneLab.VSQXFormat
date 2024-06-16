@@ -118,7 +118,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                 var trackInfo = new TrackInfo()
                 {
                     Name = t.name,
-                    Gain = RangeMapper((vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].iGin : 0) / 10d, -89.8, 6.0, -24.0, 24.0),
+                    Gain = RangeMapper((vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].iGin : 0) / 10d, -89.8, 6.0, 0, 1.0),
                     Pan = RangeMapper((vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].pan : 0), 0, 128.0, -1.0, 1.0),
                     Mute = vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].m != 0 : false,
                     Solo = vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].s != 0 : false
