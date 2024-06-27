@@ -1,5 +1,7 @@
 ﻿using System.IO.Compression;
 using System.Reflection;
+using System.Text.Json;
+using TLXPackageHelper;
 
 internal class Program
 {
@@ -7,17 +9,46 @@ internal class Program
     private static void Main(string[] args)
     {
         Console.WriteLine("TLX插件打包助手");
-        Package("VSQXFormat", @"..\VSQXFormat\", @"..\Output\VsqxFormatSupport-0.0.4b2.tlx");
+        Package("VSQXFormat", @"..\..\..\..\VSQXFormat\", @"..\Output\");
     }
-
-    private static void Package(string PluginName, string ProjectDir = "", string OutputFile = "OutputTlx.tlx")
+    //VsqxFormatSupport-0.0.5.tlx
+    private static void Package(string PluginName, string ProjectDir = "", string OutputDir = "..\\")
     {
         string CompileOutputDir = Path.Combine(System.Environment.GetEnvironmentVariable("AppData"),"TuneLab","Extensions",PluginName);
+
+
+
+        string Depends = Path.Combine(ProjectDir, "..", "Dependences");
+        string descriptionPath = Path.Combine(Depends, "description.json");
+        FileInfo fi = new FileInfo(descriptionPath);
+        string ff = fi.FullName;
+        ExtensionDescription? description = null;
+        if (File.Exists(descriptionPath))
+        {
+            try
+            {
+                string desContent = "";
+                using (FileStream fs = new FileStream(descriptionPath, FileMode.Open))
+                {
+                    StreamReader sr = new StreamReader(fs);
+                    desContent = sr.ReadToEnd();
+                }
+                description = JsonSerializer.Deserialize<ExtensionDescription>(desContent);
+            }
+            catch {; }
+        }
+        #if DEBUG
+                string DebugSign = "-Debug";
+        #else
+                        string DebugSign = "";
+        #endif
+        string FileName = description == null ? "OutputTlx.tlx" : string.Format("{0}Support-v{1}{2}.tlx", description.name, description.version, DebugSign);
+        string OutputFile = Path.Combine(OutputDir, FileName);
+
 
         string GetProjectDir = Assembly.GetExecutingAssembly().Location.Split("\\bin\\Release\\")[0].Split("\\bin\\Debug\\")[0];
         if (ProjectDir.StartsWith(".")) { ProjectDir = Path.Combine(GetProjectDir, ProjectDir); }
         if (OutputFile.StartsWith(".")) { OutputFile = Path.Combine(GetProjectDir, OutputFile); }
-        string Depends = Path.Combine(ProjectDir, "..", "Dependences");
         Dictionary<string, string> FilePath = SearchFile(Depends,SearchFile(CompileOutputDir),"",true);
         ZipTo(FilePath, OutputFile);
         Console.WriteLine("Done!");

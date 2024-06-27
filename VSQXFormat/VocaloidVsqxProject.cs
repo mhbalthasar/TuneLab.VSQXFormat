@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Xml;
 using System.Xml.Serialization;
 using TuneLab.Base.Properties;
+using TuneLab.Base.Science;
 using TuneLab.Base.Structures;
 using TuneLab.Extensions.Formats.DataInfo;
 using TuneLab.Extensions.Formats.VSQX.partSegment;
@@ -118,7 +119,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                 var trackInfo = new TrackInfo()
                 {
                     Name = t.name,
-                    Gain = RangeMapper((vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].iGin : 0) / 10d, -89.8, 6.0, 0, 1.0),
+                    Gain = RangeMapper((vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].vol : 0) / 10d, -89.8, 6.0, -24.0, 6.0).Limit(-24.0,6.0),
                     Pan = RangeMapper((vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].pan : 0), 0, 128.0, -1.0, 1.0),
                     Mute = vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].m != 0 : false,
                     Solo = vsMixer.ContainsKey(t.tNo) ? vsMixer[t.tNo].s != 0 : false
@@ -294,7 +295,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                     //添加PIT参数,如果是Besizer，那么自己加初始滑音
                     Task copyPIT= (p.plane==1) ? Task.Factory.StartNew(() => {; }):Task.Factory.StartNew(() => { SyncAutomation("P", "PitchBend", 0, new SyncAutomationPoint((inp) => { return inp > 0 ? inp / 8191.0d : inp / 8192.0d; })); });
                     //添加PBS参数
-                    Task copyPBS = Task.Factory.StartNew(() => { SyncAutomation("S", "PitchBendSensitive", 2, new SyncAutomationPoint((inp) => { return inp; })); });
+                    Task copyPBS = Task.Factory.StartNew(() => { SyncAutomation("S", "PitchBendSensitivity", 2, new SyncAutomationPoint((inp) => { return inp; })); });
                     //添加DYN参数
                     Task copyDYN = Task.Factory.StartNew(() => { SyncAutomation("D", "Dynamics", 64, new SyncAutomationPoint((inp) => { return RangeMapper((int)inp, 0, 128, -1.0, 1.0); })); });
                     //添加BRI参数
@@ -361,7 +362,8 @@ namespace TuneLab.Extensions.Formats.VSQX
                     vsq.mixer.vsUnit[i] = new vsUnit()
                     {
                         tNo = (byte)i,
-                        iGin = (int)(RangeMapper(info.Tracks[i].Gain, -24.0, 24.0, -89.8, 6.0) * 10d),
+                        iGin=0,
+                        vol = (int)(RangeMapper(info.Tracks[i].Gain, -24.0, 6.0, -89.8, 6.0) * 10d),
                         pan = (int)(RangeMapper(info.Tracks[i].Pan, -1.0, 1.0, 0, 128.0)),
                         m = (byte)(info.Tracks[i].Mute ? 1 : 0),
                         s = (byte)(info.Tracks[i].Solo ? 1 : 0)
@@ -527,7 +529,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                                 vp.planeSpecified = false;
                                 //全相对音高模式
                                 pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("P", "PitchBend", 0, new SyncAutomationPoint((inp) => { return inp > 0 ? inp * 8191.0d : inp * 8192.0; })); }));
-                                pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("S", "PitchBendSensitive", 2, new SyncAutomationPoint((inp) => { return inp; })); }));
+                                pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("S", "PitchBendSensitivity", 2, new SyncAutomationPoint((inp) => { return inp; })); }));
                             }
                             Task.WaitAll(pallTasks.ToArray());
                             vp.cc = ccList.ToArray();

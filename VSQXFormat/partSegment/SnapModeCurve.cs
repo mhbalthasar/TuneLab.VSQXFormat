@@ -95,7 +95,7 @@ namespace TuneLab.Extensions.Formats.VSQX.partSegment
             if (!automn.ContainsKey("PitchBend")) return new List<Point>(); ;
             double getPBS(double tick)
             {
-                return (!automn.ContainsKey("PitchBendSensitive")) ? 2 : ((int)automn["PitchBendSensitive"].Points.Where(p => p.X <= tick).OrderBy(p => p.X).LastOrDefault(new Point() { X = 0, Y = 2 }).Y);
+                return (!automn.ContainsKey("PitchBendSensitivity")) ? 2 : ((int)automn["PitchBendSensitivity"].Points.Where(p => p.X <= tick).OrderBy(p => p.X).LastOrDefault(new Point() { X = 0, Y = 2 }).Y);
             }
             List<Point> a_PIT = automn["PitchBend"].Points.OrderBy(p=>p.X).ToList();
             List<Point> ret = new List<Point>();
