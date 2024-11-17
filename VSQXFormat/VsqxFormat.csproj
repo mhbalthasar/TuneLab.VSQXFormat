@@ -17,4 +17,10 @@
     <ProjectReference Include="..\..\..\..\TuneLab.Extensions.Formats\TuneLab.Extensions.Formats.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="Tunelab.CommonDialog">
+      <HintPath>..\Dependences\Tunelab.CommonDialog.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
 </Project>
