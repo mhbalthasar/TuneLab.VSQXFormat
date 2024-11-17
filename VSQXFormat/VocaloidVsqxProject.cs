@@ -309,11 +309,16 @@ namespace TuneLab.Extensions.Formats.VSQX
                                             //计算控制点绝对音高
                                             List<Point> lpItems = new List<Point>();
                                             var basePitchKeys = basePitch.Keys.OrderBy(key => key).ToList();
+
+                                            var ctla = ctl.ToArray();
+                                            var pbsa = pbs.ToArray();
+                                            var bpit = basePitch.ToArray();
+
                                             Parallel.ForEach(AllKeys, (tickKey) =>
                                             {
-                                                double bPitch = basePitch.ContainsKey(tickKey) ? basePitch[tickKey] : SnapModeCurve.calc_Mid(basePitch.Last(key => key.Key < tickKey), basePitch.Where(key => key.Key > tickKey).First(), tickKey);
-                                                double bPit = ctl.Where(key => key.Key <= tickKey).Last().Value;
-                                                double bPbs = pbs.Where(key => key.Key <= tickKey).Last().Value;
+                                                double bPitch = basePitch.ContainsKey(tickKey) ? basePitch[tickKey] : SnapModeCurve.calc_Mid(Array.FindLast(bpit,key => key.Key < tickKey), Array.Find(bpit,key => key.Key > tickKey), tickKey);
+                                                double bPit = Array.FindLast(ctla, p => p.Key <= tickKey).Value;
+                                                double bPbs = Array.FindLast(pbsa.ToArray(), p => p.Key <= tickKey).Value;
                                                 Point vP = new Point(tickKey, bPitch + bPbs * bPit / (bPit > 0 ? 8191.0d : 8192.0d));
                                                 lock (lpItems)
                                                 {
@@ -369,12 +374,15 @@ namespace TuneLab.Extensions.Formats.VSQX
                 is_done = true;
             });
 
-            CommonDialog.CommonDialog.PanelBox(
-                "VSQX Imporing",
-                "Deserializing",
-                [],
-                () => { return (!(error || is_done)); }
-                );
+            CommonDialog.CommonDialog.UIThreadCall(() => {
+                CommonDialog.CommonDialog.PanelBox(
+                    "VSQX Imporing",
+                    "Deserializing",
+                    [],
+                    () => { return (!(error || is_done)); }
+
+                    );
+            });
             task.Wait();
 
             if (error) return null;
@@ -626,12 +634,16 @@ namespace TuneLab.Extensions.Formats.VSQX
                 if (stream.CanSeek) stream.Position = 0;
                 is_done = true;
             });
-            CommonDialog.CommonDialog.PanelBox(
+
+            CommonDialog.CommonDialog.UIThreadCall(() =>
+            {
+                CommonDialog.CommonDialog.PanelBox(
                 "VSQX Exporting",
                 "Serializing in PitchSnap",
                 [],
                 () => { return (!(is_done)); }
                 );
+            });
             task.Wait();
 
         }
