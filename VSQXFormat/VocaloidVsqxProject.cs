@@ -195,14 +195,15 @@ namespace TuneLab.Extensions.Formats.VSQX
                                 if (VsqxControllers.ContainsKey(srcKey))
                                 {
                                     SortedDictionary<int, int> ctl = VsqxControllers[srcKey];
-                                    List<int> keyList = ctl.Keys.ToList();
-                                    for (int i = 0; i < keyList.Count; i++)
+                                    var kvList = ctl.ToArray();
+                                    //List<int> keyList = ctl.Keys.ToList();
+                                    for (int i = 0; i < kvList.Length; i++)
                                     {
-                                        int Key = keyList[i];
-                                        int Value = ctl[Key];
-                                        if (i > 0 && keyList[i - 1] != Key - 1)
+                                        int Key = kvList[i].Key;
+                                        int Value = kvList[i].Value;
+                                        if (i > 0 && kvList[i - 1].Key != Key - 1)
                                         {
-                                            retCtl.Points.Add(new Point((double)Key - 1, callback((double)ctl[keyList[i - 1]])));
+                                            retCtl.Points.Add(new Point((double)Key - 1, callback((double)kvList[i - 1].Value)));
                                         }
                                         retCtl.Points.Add(new Point((double)Key, callback((double)Value)));
 
@@ -255,13 +256,14 @@ namespace TuneLab.Extensions.Formats.VSQX
                                             {
                                                 if (forDaisy && p.plane != 1)
                                                 {
+                                                    int resolution = 5;
                                                     int durTick = MsToTicks(vsqxDoc.masterTrack.tempo[tempoIndex].v / 100d, 120);
                                                     int p2Len = Math.Min((int)(durTick / 2.0), (int)((n1.dur / 2d + n1.t) - (n.t + n.dur)));
                                                     if (p2Len < 0) p2Len = (int)(durTick / 2.0);
                                                     int p1Len = Math.Min((int)(durTick / 2.0), (int)(n.dur / 2.0));
-                                                    int newDurTick = p1Len + p2Len;
+                                                    int newDurTick = (int)(Math.Round((p1Len + p2Len)/(double)resolution)*resolution);
                                                     int stTick = n.t + n.dur - p1Len;
-                                                    for (int t = stTick; t < stTick + newDurTick; t++)
+                                                    for (int t = stTick; t < stTick + newDurTick; t=t+resolution)
                                                     {
                                                         double newV = (int)n.n + MathUtility.CubicInterpolation((t - stTick) / (double)newDurTick) * (double)(n1.n - n.n);
                                                         basePitch.Add(t, newV);
@@ -302,13 +304,14 @@ namespace TuneLab.Extensions.Formats.VSQX
                                             SortedDictionary<int, int> ctl = VsqxControllers.ContainsKey("P") ? VsqxControllers["P"] : new SortedDictionary<int, int>() { { 0, 0 } };
                                             SortedDictionary<int, int> pbs = VsqxControllers.ContainsKey("S") ? VsqxControllers["S"] : new SortedDictionary<int, int>() { { 0, 2 } };
                                             //获取所有可能的控制点
-                                            List<int> PitchKeys = basePitch.Keys.Where(key => key >= sp && key <= ep).ToList();
-                                            List<int> PitKeys = ctl.Keys.Where(key => key >= sp && key <= ep).ToList();
-                                            List<int> AllKeys = PitchKeys.Concat(PitKeys).ToList().Distinct().ToList();
-                                            AllKeys.Sort();
+                                            var PitchKeys = basePitch.Keys.Where(key => key >= sp && key <= ep);
+                                            
+                                            var PitKeys = ctl.Keys.Where(key => key >= sp && key <= ep);
+                                            var AllKeys = PitchKeys.Concat(PitKeys).Distinct().OrderBy(p=>p).ToArray();
+                                            //AllKeys.Sort();
                                             //计算控制点绝对音高
                                             List<Point> lpItems = new List<Point>();
-                                            var basePitchKeys = basePitch.Keys.OrderBy(key => key).ToList();
+                                            //var basePitchKeys = basePitch.Keys.OrderBy(key => key).ToList();
 
                                             var ctla = ctl.ToArray();
                                             var pbsa = pbs.ToArray();
