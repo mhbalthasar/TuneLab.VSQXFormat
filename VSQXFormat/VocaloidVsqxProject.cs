@@ -53,6 +53,7 @@ namespace TuneLab.Extensions.Formats.VSQX
     
     public class VsqxDecoder
     {
+        bool forDaisy = true;
         int mVsqVersion = 0;
         public VsqxDecoder() {}
         private int loadVsqVersion(Stream stream)
@@ -86,6 +87,20 @@ namespace TuneLab.Extensions.Formats.VSQX
             return (x - minIn) * (maxOut - minOut) / (maxIn - minIn) + minOut;
         }
         private delegate double SyncAutomationPoint(double input);
+
+        private static int MsToTicks(double tempo, double ms)
+        {
+            // 每个4分音符的时长（毫秒）
+            double quarterNoteDurationMs = 60000.0 / tempo;
+
+            // 每个tick的时长（毫秒），假设4分音符为480 tick
+            double tickDurationMs = quarterNoteDurationMs / 480.0;
+
+            // 根据给定毫秒数计算对应的tick数
+            int ticks = (int)(ms / tickDurationMs);
+
+            return ticks;
+        }
         public ProjectInfo Deserialize(Stream stream)
         {
             vsq4.vsq4 vsqxDoc;
@@ -103,7 +118,7 @@ namespace TuneLab.Extensions.Formats.VSQX
             if (vsqxDoc.masterTrack != null)
             {
                 //处理Tempo
-                if(vsqxDoc.masterTrack.tempo!=null) foreach (vsq4.tempo t in vsqxDoc.masterTrack.tempo) proj.Tempos.Add(new TempoInfo() { Bpm = t.v / 100d, Pos = t.t / 100d });
+                if(vsqxDoc.masterTrack.tempo!=null) foreach (vsq4.tempo t in vsqxDoc.masterTrack.tempo) proj.Tempos.Add(new TempoInfo() { Bpm = t.v / 100d, Pos = t.t });
                 //处理TimeSig
                 if (vsqxDoc.masterTrack.timeSig != null) foreach (vsq4.timeSig t in vsqxDoc.masterTrack.timeSig) proj.TimeSignatures.Add(new TimeSignatureInfo() { BarIndex = t.m, Numerator = t.nu, Denominator = t.de });
             }
@@ -197,9 +212,14 @@ namespace TuneLab.Extensions.Formats.VSQX
                     }
                     Task copyNotes = Task.Factory.StartNew(() =>
                     {
+                        int tempoIndex = 0;
                         SortedDictionary<int, double> basePitch = new SortedDictionary<int, double>();
                         //复制音符
                         if (p.note == null) p.note = new note[0];
+                        while(tempoIndex< vsqxDoc.masterTrack.tempo.Length-1 && p.t < vsqxDoc.masterTrack.tempo[tempoIndex].t)
+                        {
+                            tempoIndex++;
+                        }
                         for (int ni = 0; ni < p.note.Length; ni++)
                         {
                             note n = p.note[ni];
@@ -217,18 +237,33 @@ namespace TuneLab.Extensions.Formats.VSQX
                                 midiPartInfo.Notes.Add(noteInfo);
                             }
 
-                            if (p.plane==1)
+                            if (p.plane==1 || forDaisy)
                             {
                                 int sigment_Space = 120;
                                 double nextDert = 0;
                                 //计算基础音高，自动补完滑音
-                                {
                                     if (ni == 0) { basePitch.Add(0, n.n); if (n.t > 0) basePitch.Add(n.t, n.n); }//第一个音符，加头部0和开始0
-                                    if (ni + 1 < p.note.Length)
+                                if (ni + 1 < p.note.Length)
+                                {
+                                    note n1 = p.note[ni + 1];//后一个音符
+                                    nextDert = n1.t - n.t - n.dur;
+                                    if (nextDert <= sigment_Space)//不分片,前后两端都有音高
                                     {
-                                        note n1 = p.note[ni + 1];
-                                        nextDert = n1.t - n.t - n.dur;
-                                        if (nextDert <= sigment_Space)//不分片,前后两端都有音高
+                                        if (forDaisy && p.plane!=1)
+                                        {
+                                            int durTick = MsToTicks(vsqxDoc.masterTrack.tempo[tempoIndex].v / 100d, 120);
+                                            int p2Len = Math.Min((int)(durTick / 2.0), (int)((n1.dur / 2d + n1.t) - (n.t + n.dur)));
+                                            if (p2Len < 0) p2Len = (int)(durTick / 2.0);
+                                            int p1Len = Math.Min((int)(durTick / 2.0), (int)(n.dur / 2.0));
+                                            int newDurTick = p1Len + p2Len;
+                                            int stTick = n.t + n.dur - p1Len;
+                                            for (int t = stTick; t < stTick + newDurTick; t++)
+                                            {
+                                                double newV = (int)n.n + MathUtility.CubicInterpolation((t - stTick) / (double)newDurTick) * (double)(n1.n - n.n);
+                                                basePitch.Add(t, newV);
+                                            }
+                                        }
+                                        else
                                         {
                                             if (n.t + n.dur == n1.t)
                                             {
@@ -241,18 +276,18 @@ namespace TuneLab.Extensions.Formats.VSQX
                                             }
                                             basePitch.Add(n1.t, n1.n);//加头部0
                                         }
-                                        else//分片，两端不连续，中间区域归属后一个音符
-                                        {
-                                            basePitch.Add(n.t + n.dur, n.n);//加尾部0
-                                            basePitch.Add(n.t + n.dur + 4, n1.n);//加区域0
-                                            basePitch.Add(n1.t, n1.n);//加头部0
-                                        }
                                     }
-                                    else
+                                    else//分片，两端不连续，中间区域归属后一个音符
                                     {
-                                        //最后一个音符
                                         basePitch.Add(n.t + n.dur, n.n);//加尾部0
+                                        basePitch.Add(n.t + n.dur + 4, n1.n);//加区域0
+                                        basePitch.Add(n1.t, n1.n);//加头部0
                                     }
+                                }
+                                else
+                                {
+                                    //最后一个音符
+                                    basePitch.Add(n.t + n.dur, n.n);//加尾部0
                                 }
                                 //基础音高算完，绘制拟合音高
                                 {
@@ -269,6 +304,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                                     AllKeys.Sort();
                                     //计算控制点绝对音高
                                     List<Point> lpItems = new List<Point>();
+                                    var basePitchKeys = basePitch.Keys.OrderBy(key => key).ToList();
                                     Parallel.ForEach(AllKeys, (tickKey) =>
                                     {
                                         double bPitch = basePitch.ContainsKey(tickKey) ? basePitch[tickKey] : SnapModeCurve.calc_Mid(basePitch.Last(key => key.Key < tickKey), basePitch.Where(key => key.Key > tickKey).First(), tickKey);
@@ -292,12 +328,23 @@ namespace TuneLab.Extensions.Formats.VSQX
                             }
                         }
                     });
-                    //添加PIT参数,如果是Besizer，那么自己加初始滑音
-                    Task copyPIT= (p.plane==1) ? Task.Factory.StartNew(() => {; }):Task.Factory.StartNew(() => { SyncAutomation("P", "PitchBend", 0, new SyncAutomationPoint((inp) => { return inp > 0 ? inp / 8191.0d : inp / 8192.0d; })); });
-                    //添加PBS参数
-                    Task copyPBS = Task.Factory.StartNew(() => { SyncAutomation("S", "PitchBendSensitivity", 2, new SyncAutomationPoint((inp) => { return inp; })); });
-                    //添加DYN参数
-                    Task copyDYN = Task.Factory.StartNew(() => { SyncAutomation("D", "Dynamics", 64, new SyncAutomationPoint((inp) => { return RangeMapper((int)inp, 0, 128, -1.0, 1.0); })); });
+                    Task copyDYN, copyPIT, copyPBS;
+                    if (forDaisy)
+                    {
+                        copyPIT = Task.Factory.StartNew(() => {; });
+                        copyPBS = Task.Factory.StartNew(() => {; });
+                        copyDYN = Task.Factory.StartNew(() => { SyncAutomation("D", "Volume", 64, new SyncAutomationPoint((inp) => { var dyl= RangeMapper((int)inp, 0, 128, -11.0, 11.0);return dyl>0?dyl*0.5:dyl; })); });
+                    
+                    }
+                    else
+                    {
+                        //添加PIT参数,如果是Besizer，那么自己加初始滑音
+                        copyPIT = (p.plane == 1) ? Task.Factory.StartNew(() => {; }) : Task.Factory.StartNew(() => { SyncAutomation("P", "PitchBend", 0, new SyncAutomationPoint((inp) => { return inp > 0 ? inp / 8191.0d : inp / 8192.0d; })); });
+                        //添加PBS参数
+                        copyPBS = Task.Factory.StartNew(() => { SyncAutomation("S", "PitchBendSensitivity", 2, new SyncAutomationPoint((inp) => { return inp; })); });
+                        //添加DYN参数
+                        copyDYN = Task.Factory.StartNew(() => { SyncAutomation("D", "Dynamics", 64, new SyncAutomationPoint((inp) => { return RangeMapper((int)inp, 0, 128, -1.0, 1.0); })); });
+                    }
                     //添加BRI参数
                     Task copyBRI = Task.Factory.StartNew(() => { SyncAutomation("R", "Brightness", 64, new SyncAutomationPoint((inp) => { return RangeMapper((int)inp, 0, 128, -1.0, 1.0); })); });
                     //添加GEN参数
