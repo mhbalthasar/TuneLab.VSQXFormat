@@ -377,7 +377,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                 is_done = true;
             });
 
-            CommonDialog.CommonDialog.UIThreadCall(() => {
+            UIHelper.TryThreadAction(() => {
                 CommonDialog.CommonDialog.PanelBox(
                     "VSQX Imporing",
                     "Deserializing",
@@ -390,6 +390,20 @@ namespace TuneLab.Extensions.Formats.VSQX
 
             if (error) return null;
             return proj;
+        }
+    }
+
+    class UIHelper
+    {
+        public static void  TryThreadAction(Action act)
+        {
+            try
+            {
+                act();
+            }catch
+            {
+                CommonDialog.CommonDialog.UIThreadCall(act);
+            }
         }
     }
 
@@ -638,7 +652,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                 is_done = true;
             });
 
-            CommonDialog.CommonDialog.UIThreadCall(() =>
+            UIHelper.TryThreadAction(() =>
             {
                 CommonDialog.CommonDialog.PanelBox(
                 "VSQX Exporting",
