@@ -573,7 +573,7 @@ namespace TuneLab.Extensions.Formats.VSQX
                                     }
                                     lock (ccList) { ccList.AddRange(tmpList); };
                                 }
-                                pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("D", "Dynamics", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp, -1.0, 1.0, 0, 128)); })); }));
+                                pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("D", "Volume", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp>0?Math.Min(1.0,inp/6.0):Math.Max(-1.0,inp/12.0), -1.0, 1.0, 0, 128)); })); }));
                                 pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("R", "Brightness", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp, -1.0, 1.0, 0, 128)); })); }));
                                 pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("G", "Gender", 64, new SyncAutomationPoint((inp) => { return Math.Min(127, RangeMapper(inp, -1.0, 1.0, 0, 128)); })); }));
                                 pallTasks.Add(Task.Factory.StartNew(() => { SyncAutomation2("W", "Growl", 0, new SyncAutomationPoint((inp) => { return RangeMapper(inp, 0, 1.0, 0, 127); })); }));
